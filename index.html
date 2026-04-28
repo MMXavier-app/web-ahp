@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AHP - Application d'aide à la décision multicritère</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        body {
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            padding: 24px;
+        }
+        h1, h2, h3 {
+            color: #1e3c72;
+        }
+        .step {
+            background: #f8fafc;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid #e2e8f0;
+        }
+        .step-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            border-left: 6px solid #2c7da0;
+            padding-left: 12px;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            margin-top: 12px;
+        }
+        input, select, button {
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+            font-size: 1rem;
+        }
+        button {
+            background: #2c7da0;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+            margin-top: 12px;
+        }
+        button:hover {
+            background: #1f5e7a;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background: #e9f0f5;
+        }
+        .matrix-input {
+            width: 80px;
+            text-align: center;
+        }
+        .result-card {
+            background: #e6f7f0;
+            padding: 20px;
+            border-radius: 20px;
+            margin-top: 20px;
+        }
+        .best {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #0f5e3a;
+        }
+        .error {
+            color: #b91c1c;
+            background: #fee2e2;
+            padding: 12px;
+            border-radius: 16px;
+        }
+        .inline-flex {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .criteria-weights {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 16px;
+        }
+        hr {
+            margin: 20px 0;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.85rem;
+            color: #475569;
+        }
+        .badge {
+            background: #2c7da0;
+            color: white;
+            border-radius: 40px;
+            padding: 4px 12px;
+            font-size: 0.75rem;
+            display: inline-block;
+        }
+        .responsive-table {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 Méthode AHP (Analytic Hierarchy Process)</h1>
+    <p>Décision multicritère avec vérification de cohérence.</p>
+
+    <!-- Étape 1 : dimensions -->
+    <div class="step">
+        <div class="step-title">1️⃣ Configuration</div>
+        <div class="inline-flex">
+            <div>
+                <label>Nombre de critères (2 à 7)</label>
+                <input type="number" id="numC" min="2" max="7" value="3">
+            </div>
+            <div>
+                <label>Nombre d'alternatives (2 à 7)</label>
+                <input type="number" id="numA" min="2" max="7" value="3">
+            </div>
+            <div style="align-self: center;">
+                <button id="initBtn">Initialiser les formulaires</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- zone dynamique pour critères + alternatives + matrice -->
+    <div id="dynamicArea"></div>
+
+    <!-- zone résultat -->
+    <div id="resultArea"></div>
+    <footer>⚖️ Échelle de Saaty : 1 égal, 3 modéré, 5 fort, 7 très fort, 9 extrême. Valeurs inverses pour comparaison inverse.</footer>
+</div>
+
+<script>
+    // ----------------------------------------------
+    // 1. Utilitaires mathématiques AHP
+    // ----------------------------------------------
+    function calcularPesos(matriz) {
+        const n = matriz.length;
+        let colSums = Array(n).fill(0);
+        for (let j = 0; j < n; j++) {
+            for (let i = 0; i < n; i++) {
+                colSums[j] += matriz[i][j];
+            }
+        }
+        let norm = Array(n).fill().map(() => Array(n).fill(0));
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                norm[i][j] = matriz[i][j] / colSums[j];
+            }
+        }
+        let pesos = Array(n).fill(0);
+        for (let i = 0; i < n; i++) {
+            let sumaFila = 0;
+            for (let j = 0; j < n; j++) sumaFila += norm[i][j];
+            pesos[i] = sumaFila / n;
+        }
+        return pesos;
+    }
+
+    function calcularLambdaMax(matriz, pesos) {
+        const n = matriz.length;
+        let aw = Array(n).fill(0);
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                aw[i] += matriz[i][j] * pesos[j];
+            }
+        }
+        let lambda = 0;
+        for (let i = 0; i < n; i++) {
+            lambda += aw[i] / pesos[i];
+        }
+        return lambda / n;
+    }
+
+    function getRI(n) {
+        const riTable = {1:0,2:0,3:0.58,4:0.9,5:1.12,6:1.24,7:1.32};
+        return riTable[n] || 1.32;
+    }
+
+    function verificarConsistencia(matriz) {
+        const n = matriz.length;
+        const pesos = calcularPesos(matriz);
+        const lambdaMax = calcularLambdaMax(matriz, pesos);
+        const CI = (lambdaMax - n) / (n - 1);
+        const RI = getRI(n);
+        const CR = CI / RI;
+        return { isConsistent: CR < 0.1, CR, CI, lambdaMax, pesos };
+    }
+
+    function normalizarValores(valores, esCosto = true) {
+        if (esCosto) {
+            let inv = valores.map(v => 1 / v);
+            let sumInv = inv.reduce((a,b)=>a+b,0);
+            return inv.map(v => v / sumInv);
+        } else {
+            let sum = valores.reduce((a,b)=>a+b,0);
+            return valores.map(v => v / sum);
+        }
+    }
+
+    let categoriaMaps = {};
+
+    function buildFullInterface() {
+        const numC = parseInt(document.getElementById('numC').value);
+        const numA = parseInt(document.getElementById('numA').value);
+        if (isNaN(numC) || isNaN(numA) || numC<2 || numC>7 || numA<2 || numA>7) {
+            alert("Veuillez entrer entre 2 et 7 pour critères et alternatives");
+            return;
+        }
+
+        let container = document.getElementById('dynamicArea');
+        container.innerHTML = '';
+
+        // Noms des critères
+        let divCritNames = document.createElement('div');
+        divCritNames.className = 'step';
+        divCritNames.innerHTML = `<div class="step-title">2️⃣ Noms des critères</div>`;
+        let gridCrit = document.createElement('div');
+        gridCrit.style.display = 'flex';
+        gridCrit.style.gap = '12px';
+        gridCrit.style.flexWrap = 'wrap';
+        for (let i=0; i<numC; i++) {
+            let inp = document.createElement('input');
+            inp.type = 'text';
+            inp.placeholder = `Critère ${i+1}`;
+            inp.value = `Critère ${i+1}`;
+            inp.id = `critName_${i}`;
+            inp.style.width = '120px';
+            gridCrit.appendChild(inp);
+        }
+        divCritNames.appendChild(gridCrit);
+        container.appendChild(divCritNames);
+
+        // Noms des alternatives
+        let divAltNames = document.createElement('div');
+        divAltNames.className = 'step';
+        divAltNames.innerHTML = `<div class="step-title">3️⃣ Noms des alternatives</div>`;
+        let gridAlt = document.createElement('div');
+        gridAlt.style.display = 'flex';
+        gridAlt.style.gap = '12px';
+        gridAlt.style.flexWrap = 'wrap';
+        for (let i=0; i<numA; i++) {
+            let inp = document.createElement('input');
+            inp.type = 'text';
+            inp.placeholder = `Alternative ${i+1}`;
+            inp.value = `Alternative ${i+1}`;
+            inp.id = `altName_${i}`;
+            inp.style.width = '130px';
+            gridAlt.appendChild(inp);
+        }
+        divAltNames.appendChild(gridAlt);
+        container.appendChild(divAltNames);
+
+        // Scores par critère
+        let divScores = document.createElement('div');
+        divScores.className = 'step';
+        divScores.innerHTML = `<div class="step-title">4️⃣ Évaluations des alternatives par critère</div>
+        <p>Pour chaque critère, précisez si les valeurs sont numériques (prix, km, etc.) ou catégorielles (qualité).<br>
+        <strong>Numérique :</strong> saisir un nombre (ex: 12000, 15000). Pour les coûts (moins c'est mieux) cocher "Coût".<br>
+        <strong>Catégoriel :</strong> définissez les niveaux (ex: Mauvais, Moyen, Bon) et la note sur 1-9.</p>`;
+        
+        let scoresTables = document.createElement('div');
+        for (let c=0; c<numC; c++) {
+            let card = document.createElement('div');
+            card.style.border = '1px solid #cbd5e1';
+            card.style.borderRadius = '16px';
+            card.style.padding = '12px';
+            card.style.marginBottom = '20px';
+            card.style.backgroundColor = '#ffffff';
+            let critNameSpan = document.createElement('span');
+            critNameSpan.innerHTML = `<strong>📌 Critère ${c+1} : </strong> <span id="critNameLabel_${c}">(nom à définir)</span>`;
+            let typeSelect = document.createElement('select');
+            typeSelect.id = `typeCrit_${c}`;
+            typeSelect.innerHTML = `<option value="numeric">Numérique</option><option value="categorical">Catégoriel</option>`;
+            typeSelect.style.marginLeft = '16px';
+            let costoCheck = document.createElement('input');
+            costoCheck.type = 'checkbox';
+            costoCheck.id = `costFlag_${c}`;
+            let costoLabel = document.createElement('label');
+            costoLabel.innerText = ' Coût (moins = mieux)';
+            costoLabel.style.display = 'inline';
+            
+            let containerValues = document.createElement('div');
+            containerValues.id = `valuesContainer_${c}`;
+            containerValues.style.marginTop = '12px';
+            
+            function refreshValuesContainer() {
+                const isCat = document.getElementById(`typeCrit_${c}`).value === 'categorical';
+                if (isCat) {
+                    let html = `<table style="width:100%"><thead><tr><th>Alternative</th><th>Catégorie (ex: Mauvais, Bon)</th><th>Note (1-9) associée</th></tr></thead><tbody>`;
+                    for (let a=0; a<numA; a++) {
+                        let altId = `altName_${a}`;
+                        let altNameVal = document.getElementById(altId) ? document.getElementById(altId).value : `Alt ${a+1}`;
+                        html += `<tr>
+                            <td>${altNameVal}</td>
+                            <td><input type="text" id="catVal_${c}_${a}" placeholder="Catégorie" style="width:100px"></td>
+                            <td><input type="number" id="catNote_${c}_${a}" placeholder="Note 1-9" min="1" max="9" step="1" style="width:80px"></td>
+                        </tr>`;
+                    }
+                    html += `</tbody></table><div class="badge">Lors de l'évaluation, on utilise la note comme score brut, puis normalisation (plus haut mieux).</div>`;
+                    containerValues.innerHTML = html;
+                } else {
+                    let html = `<table style="width:100%"><thead><tr><th>Alternative</th><th>Valeur numérique</th></tr></thead><tbody>`;
+                    for (let a=0; a<numA; a++) {
+                        let altId = `altName_${a}`;
+                        let altNameVal = document.getElementById(altId) ? document.getElementById(altId).value : `Alt ${a+1}`;
+                        html += `<tr>
+                            <td>${altNameVal}</td>
+                            <td><input type="number" id="numVal_${c}_${a}" placeholder="ex: 100, 25.5" step="any" style="width:120px"></td>
+                        </tr>`;
+                    }
+                    html += `</tbody></table>`;
+                    containerValues.innerHTML = html;
+                }
+            }
+            typeSelect.onchange = refreshValuesContainer;
+            refreshValuesContainer();
+            
+            card.appendChild(critNameSpan);
+            card.appendChild(typeSelect);
+            card.appendChild(costoCheck);
+            card.appendChild(costoLabel);
+            card.appendChild(containerValues);
+            scoresTables.appendChild(card);
+        }
+        divScores.appendChild(scoresTables);
+        container.appendChild(divScores);
+
+        // Matrice de comparaison des critères
+        let divPairwise = document.createElement('div');
+        divPairwise.className = 'step';
+        divPairwise.innerHTML = `<div class="step-title">5️⃣ Matrice de comparaison par paires des critères</div>
+        <p>Remplir la matrice triangulaire supérieure (échelle de Saaty). Les valeurs inverses sont automatiques.</p>`;
+        let matrixDiv = document.createElement('div');
+        matrixDiv.className = 'responsive-table';
+        let tableHtml = '<table id="pairwiseMatrixTable"><thead><tr><th>Critère</th>';
+        for (let i=0; i<numC; i++) tableHtml += `<th>C${i+1}</th>`;
+        tableHtml += '</tr></thead><tbody>';
+        for (let i=0; i<numC; i++) {
+            tableHtml += `<tr><td><strong>C${i+1}</strong></td>`;
+            for (let j=0; j<numC; j++) {
+                if (i === j) {
+                    tableHtml += `<td>1</td>`;
+                } else if (i < j) {
+                    tableHtml += `<td><input type="number" id="pair_${i}_${j}" class="matrix-input" step="any" value="1" min="0.1" max="9"></td>`;
+                } else {
+                    tableHtml += `<td id="pair_${i}_${j}" style="background:#f1f5f9;">—</td>`;
+                }
+            }
+            tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        matrixDiv.innerHTML = tableHtml;
+        divPairwise.appendChild(matrixDiv);
+        container.appendChild(divPairwise);
+
+        // Bouton calcul
+        let btnCalc = document.createElement('button');
+        btnCalc.innerText = '🚀 Lancer le calcul AHP (vérification cohérence)';
+        btnCalc.style.fontSize = '1.2rem';
+        btnCalc.style.padding = '12px 20px';
+        btnCalc.onclick = () => runAHP(numC, numA);
+        container.appendChild(btnCalc);
+        
+        function updateCritNamesLabels() {
+            for (let c=0; c<numC; c++) {
+                let nameInput = document.getElementById(`critName_${c}`);
+                if (nameInput) {
+                    let span = document.getElementById(`critNameLabel_${c}`);
+                    if (span) span.innerText = nameInput.value;
+                    let ths = document.querySelectorAll('#pairwiseMatrixTable th');
+                    if (ths[c+1]) ths[c+1].innerText = nameInput.value;
+                    let tds = document.querySelectorAll('#pairwiseMatrixTable td:first-child');
+                    if (tds[c]) tds[c].innerHTML = `<strong>${nameInput.value}</strong>`;
+                }
+            }
+            for (let c=0; c<numC; c++) {
+                let sel = document.getElementById(`typeCrit_${c}`);
+                if (sel) sel.dispatchEvent(new Event('change'));
+            }
+        }
+        for (let c=0; c<numC; c++) {
+            let inp = document.getElementById(`critName_${c}`);
+            if (inp) inp.onchange = updateCritNamesLabels;
+        }
+        for (let a=0; a<numA; a++) {
+            let inpAlt = document.getElementById(`altName_${a}`);
+            if (inpAlt) inpAlt.onchange = () => {
+                for (let c=0; c<numC; c++) {
+                    let sel = document.getElementById(`typeCrit_${c}`);
+                    if (sel) sel.dispatchEvent(new Event('change'));
+                }
+            };
+        }
+        updateCritNamesLabels();
+        for (let c=0; c<numC; c++) {
+            let sel = document.getElementById(`typeCrit_${c}`);
+            if (sel) sel.dispatchEvent(new Event('change'));
+        }
+    }
+    
+    function runAHP(numC, numA) {
+        try {
+            let critNames = [];
+            for (let i=0; i<numC; i++) {
+                let inp = document.getElementById(`critName_${i}`);
+                critNames.push(inp ? inp.value : `Critère ${i+1}`);
+            }
+            let altNames = [];
+            for (let i=0; i<numA; i++) {
+                let inp = document.getElementById(`altName_${i}`);
+                altNames.push(inp ? inp.value : `Alternative ${i+1}`);
+            }
+            
+            let pairwise = Array(numC).fill().map(() => Array(numC).fill(1));
+            for (let i=0; i<numC; i++) {
+                for (let j=i+1; j<numC; j++) {
+                    let val = parseFloat(document.getElementById(`pair_${i}_${j}`).value);
+                    if (isNaN(val)) val = 1;
+                    pairwise[i][j] = val;
+                    pairwise[j][i] = 1/val;
+                }
+            }
+            const { isConsistent, CR, pesos: critPesos } = verificarConsistencia(pairwise);
+            
+            let altScoresByCrit = Array(numC).fill().map(() => Array(numA).fill(0));
+            
+            for (let c=0; c<numC; c++) {
+                let type = document.getElementById(`typeCrit_${c}`).value;
+                let isCost = document.getElementById(`costFlag_${c}`).checked;
+                let rawValues = Array(numA).fill(0);
+                if (type === 'numeric') {
+                    for (let a=0; a<numA; a++) {
+                        let val = parseFloat(document.getElementById(`numVal_${c}_${a}`).value);
+                        if (isNaN(val)) val = 0;
+                        rawValues[a] = val;
+                    }
+                    let normalized = normalizarValores(rawValues, isCost);
+                    for (let a=0; a<numA; a++) altScoresByCrit[c][a] = normalized[a];
+                } else {
+                    let notes = [];
+                    for (let a=0; a<numA; a++) {
+                        let note = parseFloat(document.getElementById(`catNote_${c}_${a}`).value);
+                        if (isNaN(note)) note = 1;
+                        notes.push(note);
+                    }
+                    let sumNotes = notes.reduce((s,v)=>s+v,0);
+                    if (sumNotes === 0) sumNotes = 1;
+                    for (let a=0; a<numA; a++) altScoresByCrit[c][a] = notes[a] / sumNotes;
+                }
+            }
+            
+            let globalScores = Array(numA).fill(0);
+            for (let a=0; a<numA; a++) {
+                let total = 0;
+                for (let c=0; c<numC; c++) {
+                    total += critPesos[c] * altScoresByCrit[c][a];
+                }
+                globalScores[a] = total;
+            }
+            
+            let bestIndex = 0;
+            for (let i=1; i<numA; i++) if (globalScores[i] > globalScores[bestIndex]) bestIndex = i;
+            
+            let resultDiv = document.getElementById('resultArea');
+            if (!isConsistent) {
+                resultDiv.innerHTML = `<div class="result-card error">
+                    <h3>⚠️ Matrice de critères INCOHÉRENTE</h3>
+                    <p>Rapport de cohérence RC = ${CR.toFixed(4)} (doit être < 0.1).</p>
+                    <p>Veuillez revoir vos comparaisons par paires des critères. Une incohérence peut venir de cycles illogiques (ex: A > B, B > C, mais C > A).</p>
+                    <p><strong>Conseil :</strong> Utilisez l'échelle de Saaty avec soin. Vérifiez la matrice triangulaire supérieure.</p>
+                </div>`;
+                return;
+            }
+            
+            let htmlResult = `<div class="result-card">
+                <h3>✅ Matrice cohérente (RC = ${CR.toFixed(4)} &lt; 0.1)</h3>
+                <h4>Poids des critères :</h4><ul>`;
+            for (let i=0; i<numC; i++) {
+                htmlResult += `<li><strong>${critNames[i]}</strong> : ${(critPesos[i]*100).toFixed(1)}%</li>`;
+            }
+            htmlResult += `</ul><h4>Score final des alternatives :</h4><table><tr><th>Alternative</th><th>Score global</th></tr>`;
+            for (let a=0; a<numA; a++) {
+                htmlResult += `<tr><td>${altNames[a]}</td><td>${(globalScores[a]*100).toFixed(2)}%</td></tr>`;
+            }
+            htmlResult += `</table><div class="best">🏆 Meilleure alternative : ${altNames[bestIndex]} (score ${(globalScores[bestIndex]*100).toFixed(2)}%)</div>`;
+            htmlResult += `<hr><details><summary>Détails des scores par critère</summary><div class="responsive-table"><table><thead><tr><th>Critère / Alt</th>`;
+            for (let a=0; a<numA; a++) htmlResult += `<th>${altNames[a]}</th>`;
+            htmlResult += `</tr></thead><tbody>`;
+            for (let c=0; c<numC; c++) {
+                htmlResult += `<tr><td>${critNames[c]}</td>`;
+                for (let a=0; a<numA; a++) {
+                    htmlResult += `<td>${(altScoresByCrit[c][a]*100).toFixed(1)}%</td>`;
+                }
+                htmlResult += `</tr>`;
+            }
+            htmlResult += `</tbody></table></div></details></div>`;
+            resultDiv.innerHTML = htmlResult;
+        } catch(e) {
+            document.getElementById('resultArea').innerHTML = `<div class="error">Erreur : ${e.message}. Vérifiez vos saisies numériques.</div>`;
+            console.error(e);
+        }
+    }
+    
+    window.onload = () => {
+        document.getElementById('initBtn').addEventListener('click', buildFullInterface);
+        buildFullInterface();
+    };
+</script>
+</body>
+</html>
+AEF
